@@ -204,8 +204,12 @@ with st.sidebar:
         options=("White", "Black"),
         index=0 if st.session_state.user_color == chess.WHITE else 1,
     )
+    selected_user_color = chess.WHITE if color_choice == "White" else chess.BLACK
+    if selected_user_color != st.session_state.user_color:
+        reset_game(selected_user_color)
+        st.rerun()
     if st.button("Start new game"):
-        reset_game(chess.WHITE if color_choice == "White" else chess.BLACK)
+        reset_game(selected_user_color)
         st.rerun()
 
 training_summary = render_training_controls()
