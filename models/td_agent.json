@@ -1,0 +1,30 @@
+{
+  "feature_names": [
+    "bias",
+    "material_balance",
+    "mobility_balance",
+    "center_control_balance",
+    "king_danger_balance",
+    "castling_balance",
+    "passed_pawn_balance",
+    "development_balance",
+    "check_pressure",
+    "tempo"
+  ],
+  "weights": [
+    0.03520359245257685,
+    0.6520685655469064,
+    -0.07096111863355982,
+    0.05276293614108607,
+    0.005441505724901482,
+    -0.06859187380294982,
+    0.0010935402773931515,
+    0.10980396400173707,
+    -0.030624265244984204,
+    0.011411037873174122
+  ],
+  "learning_rate": 0.08,
+  "discount": 0.98,
+  "epsilon": 0.06605240791071001,
+  "seed": 7
+}
