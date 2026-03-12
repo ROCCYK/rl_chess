@@ -1,13 +1,20 @@
 from __future__ import annotations
 
+from pathlib import Path
+
 import chess
 import streamlit as st
+import streamlit.components.v1 as components
 
 from rl_chess import DEFAULT_MODEL_PATH
 from rl_chess.agent import TDAgent
 from rl_chess.training import TrainingSummary, train_via_self_play
 
 st.set_page_config(page_title="RL Chess", page_icon="♟", layout="wide")
+BOARD_COMPONENT = components.declare_component(
+    "chessboard_component",
+    path=str(Path(__file__).parent / "components" / "chessboard"),
+)
 
 
 def init_state() -> None:
@@ -23,6 +30,8 @@ def init_state() -> None:
         st.session_state.user_color = chess.WHITE
     if "status_message" not in st.session_state:
         st.session_state.status_message = "Select a piece to start."
+    if "last_board_click_id" not in st.session_state:
+        st.session_state.last_board_click_id = None
 
 
 def reset_game(user_color: chess.Color) -> None:
@@ -48,14 +57,38 @@ def build_user_move(board: chess.Board, from_square: chess.Square, to_square: ch
     return None
 
 
-def square_label(board: chess.Board, square: chess.Square, selected_square: chess.Square | None, legal_targets: set[int]) -> str:
+def square_aria_label(board: chess.Board, square: chess.Square, selected_square: chess.Square | None, legal_targets: set[int]) -> str:
     piece = board.piece_at(square)
-    symbol = piece.unicode_symbol() if piece else "·"
+    square_name = chess.square_name(square)
+    if piece is None:
+        piece_description = "empty square"
+    else:
+        piece_color = "white" if piece.color == chess.WHITE else "black"
+        piece_description = f"{piece_color} {chess.piece_name(piece.piece_type)}"
+
+    parts = [square_name, piece_description]
     if square == selected_square:
-        return f"[{symbol}]"
-    if square in legal_targets:
-        return f"{symbol}*"
-    return symbol
+        parts.append("selected")
+    elif square in legal_targets:
+        parts.append("legal target")
+    return ", ".join(parts)
+
+
+def serialize_board(board: chess.Board, user_color: chess.Color, selected_square: chess.Square | None, legal_targets: set[int]) -> dict[str, object]:
+    pieces: dict[str, dict[str, str]] = {}
+    for square, piece in board.piece_map().items():
+        pieces[chess.square_name(square)] = {
+            "symbol": piece.unicode_symbol(),
+            "color": "white" if piece.color == chess.WHITE else "black",
+            "label": square_aria_label(board, square, selected_square, legal_targets),
+        }
+
+    return {
+        "orientation": "white" if user_color == chess.WHITE else "black",
+        "selected_square": chess.square_name(selected_square) if selected_square is not None else None,
+        "legal_targets": [chess.square_name(square) for square in sorted(legal_targets)],
+        "pieces": pieces,
+    }
 
 
 def get_legal_targets(board: chess.Board, selected_square: chess.Square | None) -> set[int]:
@@ -123,29 +156,27 @@ def render_board(board: chess.Board) -> chess.Square | None:
     user_color = st.session_state.user_color
     selected_square = st.session_state.selected_square
     legal_targets = get_legal_targets(board, selected_square)
+    click_data = BOARD_COMPONENT(
+        board=serialize_board(board, user_color, selected_square, legal_targets),
+        key="chessboard",
+        default=None,
+    )
+    if not isinstance(click_data, dict):
+        return None
 
-    ranks = range(7, -1, -1) if user_color == chess.WHITE else range(0, 8)
-    files = range(0, 8) if user_color == chess.WHITE else range(7, -1, -1)
-    clicked_square = None
+    click_id = click_data.get("click_id")
+    if click_id is None or click_id == st.session_state.last_board_click_id:
+        return None
 
-    for rank in ranks:
-        columns = st.columns([0.45] + [1] * 8)
-        columns[0].markdown(f"**{rank + 1}**")
-        for index, file_index in enumerate(files, start=1):
-            square = chess.square(file_index, rank)
-            label = square_label(board, square, selected_square, legal_targets)
-            button_type = "primary" if square == selected_square or square in legal_targets else "secondary"
-            if columns[index].button(
-                label,
-                key=f"square_{square}",
-                use_container_width=True,
-                type=button_type,
-            ):
-                clicked_square = square
+    st.session_state.last_board_click_id = click_id
+    square_name = click_data.get("square")
+    if not isinstance(square_name, str):
+        return None
 
-    file_labels = " ".join(chess.FILE_NAMES[file_index] for file_index in files)
-    st.caption(f"Files: {file_labels}")
-    return clicked_square
+    try:
+        return chess.parse_square(square_name)
+    except ValueError:
+        return None
 
 
 def describe_turn(board: chess.Board) -> str:

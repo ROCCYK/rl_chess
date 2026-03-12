@@ -1,0 +1,279 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Chessboard</title>
+    <style>
+      :root {
+        color-scheme: light dark;
+        --text-color: #e5e7eb;
+        --focus-color: #60a5fa;
+        --light-square: #f2dcc2;
+        --dark-square: #b78457;
+        --selected-ring: #facc15;
+        --target-ring: #4ade80;
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      html,
+      body {
+        margin: 0;
+        padding: 0;
+        background: transparent;
+        font-family: "Trebuchet MS", "Segoe UI Symbol", "Noto Sans Symbols", sans-serif;
+      }
+
+      .board-shell {
+        width: min(100%, 36rem);
+      }
+
+      .board-grid {
+        display: grid;
+        grid-template-columns: 1.5rem repeat(8, minmax(0, 1fr));
+        gap: 0.24rem;
+        align-items: stretch;
+      }
+
+      .axis,
+      .corner {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        color: var(--text-color);
+        font-size: 0.9rem;
+        font-weight: 600;
+        user-select: none;
+      }
+
+      .square {
+        position: relative;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        width: 100%;
+        aspect-ratio: 1 / 1;
+        min-height: clamp(2.6rem, 9vw, 4.25rem);
+        margin: 0;
+        padding: 0;
+        border-radius: 0.7rem;
+        border: 1px solid rgba(15, 23, 42, 0.16);
+        box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.08);
+        appearance: none;
+        -webkit-appearance: none;
+        font: inherit;
+        color: inherit;
+        cursor: pointer;
+        transition: transform 120ms ease, box-shadow 120ms ease, border-color 120ms ease;
+      }
+
+      .square:hover {
+        transform: translateY(-1px);
+        box-shadow: 0 6px 14px rgba(15, 23, 42, 0.18);
+      }
+
+      .square:focus-visible {
+        outline: 3px solid var(--focus-color);
+        outline-offset: 2px;
+      }
+
+      .square.light {
+        background: var(--light-square);
+      }
+
+      .square.dark {
+        background: var(--dark-square);
+      }
+
+      .square.selected {
+        border-color: var(--selected-ring);
+        box-shadow: inset 0 0 0 3px var(--selected-ring);
+      }
+
+      .square.target {
+        border-color: var(--target-ring);
+        box-shadow: inset 0 0 0 3px var(--target-ring);
+      }
+
+      .piece {
+        position: relative;
+        z-index: 1;
+        line-height: 1;
+        font-size: clamp(1.3rem, 4.8vw, 2.1rem);
+      }
+
+      .piece.white-piece {
+        color: #fffaf0;
+        text-shadow: 0 1px 1px rgba(15, 23, 42, 0.7), 0 0 1px rgba(15, 23, 42, 0.85);
+      }
+
+      .piece.black-piece {
+        color: #1f140c;
+        text-shadow: 0 0 1px rgba(255, 255, 255, 0.28);
+      }
+
+      .target-dot {
+        width: 0.72rem;
+        height: 0.72rem;
+        border-radius: 999px;
+        background: rgba(22, 101, 52, 0.72);
+      }
+
+      @media (max-width: 640px) {
+        .board-shell {
+          width: 100%;
+        }
+
+        .board-grid {
+          grid-template-columns: 1.15rem repeat(8, minmax(0, 1fr));
+          gap: 0.18rem;
+        }
+
+        .axis,
+        .corner {
+          font-size: 0.78rem;
+        }
+
+        .square {
+          min-height: clamp(2.2rem, 10.5vw, 3.4rem);
+          border-radius: 0.52rem;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script>
+      const root = document.getElementById("root");
+      const fileNames = ["a", "b", "c", "d", "e", "f", "g", "h"];
+      let clickId = 0;
+
+      function sendMessage(type, payload) {
+        window.parent.postMessage(
+          Object.assign({ isStreamlitMessage: true, type: type }, payload),
+          "*"
+        );
+      }
+
+      function setFrameHeight() {
+        sendMessage("streamlit:setFrameHeight", {
+          height: document.documentElement.scrollHeight,
+        });
+      }
+
+      function setComponentValue(value) {
+        sendMessage("streamlit:setComponentValue", { value: value });
+      }
+
+      function updateTheme(theme) {
+        if (!theme) {
+          return;
+        }
+
+        const styles = document.documentElement.style;
+        if (theme.textColor) {
+          styles.setProperty("--text-color", theme.textColor);
+        }
+        if (theme.primaryColor) {
+          styles.setProperty("--focus-color", theme.primaryColor);
+        }
+      }
+
+      function renderBoard(board) {
+        const orientation = board.orientation === "black" ? "black" : "white";
+        const ranks =
+          orientation === "white"
+            ? [8, 7, 6, 5, 4, 3, 2, 1]
+            : [1, 2, 3, 4, 5, 6, 7, 8];
+        const files = orientation === "white" ? fileNames : [...fileNames].reverse();
+        const selectedSquare = board.selected_square;
+        const legalTargets = new Set(board.legal_targets || []);
+        const pieces = board.pieces || {};
+
+        root.replaceChildren();
+
+        const shell = document.createElement("div");
+        shell.className = "board-shell";
+        const grid = document.createElement("div");
+        grid.className = "board-grid";
+        shell.appendChild(grid);
+
+        for (const rank of ranks) {
+          const rankLabel = document.createElement("div");
+          rankLabel.className = "axis";
+          rankLabel.textContent = String(rank);
+          grid.appendChild(rankLabel);
+
+          for (const file of files) {
+            const squareName = `${file}${rank}`;
+            const piece = pieces[squareName];
+            const isDark = ((file.charCodeAt(0) - 97) + (rank - 1)) % 2 === 0;
+            const button = document.createElement("button");
+            button.type = "button";
+            button.className = `square ${isDark ? "dark" : "light"}`;
+            if (squareName === selectedSquare) {
+              button.classList.add("selected");
+            } else if (legalTargets.has(squareName)) {
+              button.classList.add("target");
+            }
+            button.setAttribute(
+              "aria-label",
+              piece && piece.label ? piece.label : `${squareName}, empty square`
+            );
+
+            if (piece) {
+              const pieceSpan = document.createElement("span");
+              pieceSpan.className = `piece ${piece.color === "black" ? "black-piece" : "white-piece"}`;
+              pieceSpan.textContent = piece.symbol;
+              button.appendChild(pieceSpan);
+            } else if (legalTargets.has(squareName)) {
+              const dot = document.createElement("span");
+              dot.className = "target-dot";
+              button.appendChild(dot);
+            }
+
+            button.addEventListener("click", () => {
+              clickId += 1;
+              setComponentValue({
+                square: squareName,
+                click_id: `${Date.now()}-${clickId}`,
+              });
+            });
+            grid.appendChild(button);
+          }
+        }
+
+        const corner = document.createElement("div");
+        corner.className = "corner";
+        grid.appendChild(corner);
+
+        for (const file of files) {
+          const fileLabel = document.createElement("div");
+          fileLabel.className = "axis";
+          fileLabel.textContent = file;
+          grid.appendChild(fileLabel);
+        }
+
+        root.appendChild(shell);
+      }
+
+      function onRender(event) {
+        if (!event.data || event.data.type !== "streamlit:render") {
+          return;
+        }
+
+        updateTheme(event.data.theme);
+        renderBoard(event.data.args.board || {});
+        setFrameHeight();
+      }
+
+      window.addEventListener("message", onRender);
+      window.addEventListener("resize", setFrameHeight);
+      sendMessage("streamlit:componentReady", { apiVersion: 1 });
+      setFrameHeight();
+    </script>
+  </body>
+</html>
